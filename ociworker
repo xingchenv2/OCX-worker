@@ -39,7 +39,7 @@ readonly WEBSSH_BIN="${INSTALL_DIR}/oci-webssh"
 readonly WEBSSH_PORT=8008
 readonly REPO="OCIworker/OCIworker"
 readonly INSTALLER_RELEASE_TAG="installer-latest"
-readonly RAW_BASE="https://raw.githubusercontent.com/${REPO}/master"
+readonly RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 # install.sh 默认 Docker MySQL 容器名；tg-clean 在本机无 mysql 客户端时可经此容器连库
 readonly OCI_MYSQL_CONTAINER="${OCI_MYSQL_CONTAINER:-oci-worker-mysql}"
 
@@ -557,7 +557,7 @@ cmd_update() {
     require_root update
     require_installed
     section "运行升级"
-    info "下载并执行 install.sh（优先 master 分支，升级模式自动识别）..."
+    info "下载并执行 install.sh（优先 main 分支，升级模式自动识别）..."
     local tmp; tmp="$(mktemp)"
     if curl -fsSL --connect-timeout 15 "${RAW_BASE}/install.sh" -o "${tmp}"; then
         :
@@ -566,7 +566,7 @@ cmd_update() {
             -o "${tmp}"; then
         :
     else
-        rm -f "${tmp}"; die "install.sh 下载失败（master raw 与 release 都不可达）"
+        rm -f "${tmp}"; die "install.sh 下载失败（main raw 与 release 都不可达）"
     fi
     bash "${tmp}"
     rm -f "${tmp}"
