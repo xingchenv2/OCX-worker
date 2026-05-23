@@ -274,12 +274,34 @@ mysql_docker_run() {
     local user="$1" pass="$2" db="$3" sql="$4"
     local args=(-u"${user}" -N -B --connect-timeout=5)
     [ -n "${db}" ] && args+=("${db}")
-    local out errf
+    local out errf err=""
     errf="$(mktemp)"
     out="$(docker exec -e MYSQL_PWD="${pass}" oci-worker-mysql \
         mysql "${args[@]}" -e "${sql}" 2>"${errf}" || true)"
+    if [ -s "${errf}" ]; then
+        err="$(tr '\n' ' ' < "${errf}" | sed 's/  */ /g')"
+    fi
     rm -f "${errf}"
-    printf '%s' "${out}"
+    out="$(printf '%s' "${out}" | tr -d '\r')"
+    if [ -n "${out}" ]; then
+        printf '%s' "${out}"
+        return 0
+    fi
+    if [ -n "${err}" ]; then
+        printf '%s' "${err}"
+    fi
+}
+
+mysql_output_is_one() {
+    # True when mysql batch output is SELECT 1 (ignore stray whitespace).
+    local o="$1"
+    o="$(printf '%s' "${o}" | tr -d '\r\n[:space:]')"
+    [ "${o}" = "1" ]
+}
+
+docker_mysql_logs_final_ready() {
+    # MySQL official image: temp init listens on port 0; production mysqld logs port 3306.
+    docker logs oci-worker-mysql 2>&1 | grep -qE 'ready for connections.*port: 3306'
 }
 
 # Host mysql: keep stderr separate so MariaDB client WARNING lines do not break parsing.
@@ -318,7 +340,7 @@ mysql_select1_ok() {
     # mysql_select1_ok <host> <port> <user> <pass>  -> 0 if SELECT 1 succeeds
     local out
     out="$(mysql_cli_run "$1" "$2" "$3" "$4" "" "SELECT 1")"
-    echo "${out}" | grep -qx "1"
+    mysql_output_is_one "${out}"
 }
 
 sql_escape_ident() {
@@ -344,7 +366,7 @@ docker_mysql_select1_status() {
     else
         out="$(mysql_host_run "127.0.0.1" "3306" "${DB_USER}" "${DB_PASS}" "" "SELECT 1")"
     fi
-    if echo "${out}" | grep -qx "1"; then
+    if mysql_output_is_one "${out}"; then
         echo "ok"
         return 0
     fi
@@ -361,17 +383,30 @@ docker_mysql_select1_status() {
 
 wait_docker_mysql_user() {
     info "等待 MySQL 就绪（最多 60 秒）..."
-    local waited=0 status
+    local waited=0 status consecutive=0
     while [ "${waited}" -lt 60 ]; do
+        if ! docker_mysql_logs_final_ready; then
+            consecutive=0
+            sleep 2
+            waited=$((waited + 2))
+            printf "." >&2
+            continue
+        fi
         status="$(docker_mysql_select1_status)"
         case "${status}" in
             ok)
-                ok "MySQL 已就绪"
-                return 0
+                consecutive=$((consecutive + 1))
+                if [ "${consecutive}" -ge 2 ]; then
+                    ok "MySQL 已就绪"
+                    return 0
+                fi
                 ;;
             auth_fail)
                 printf "\n" >&2
                 die "MySQL 已启动，但用户名或密码错误。复用容器时请填写首次创建时的密码；不记得请选重新创建容器（或清空 /opt/oci-worker/data/mysql 后重装）。"
+                ;;
+            *)
+                consecutive=0
                 ;;
         esac
         sleep 2
@@ -429,8 +464,16 @@ ensure_mysql_client() {
 probe_database() {
     # Echoes one of: ok | conn_fail | auth_fail | other:<msg>
     local out
+    if [ "${DB_HOST}" = "127.0.0.1" ] && [ "${DB_PORT}" = "3306" ] && docker_mysql_container_up; then
+        case "$(docker_mysql_select1_status)" in
+            ok) echo "ok"; return 0 ;;
+            auth_fail) echo "auth_fail"; return 0 ;;
+            conn_wait|wait) echo "conn_fail"; return 0 ;;
+            *) echo "other:docker probe failed"; return 0 ;;
+        esac
+    fi
     out="$(mysql_cli_run "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_PASS}" "" "SELECT 1")"
-    if echo "${out}" | grep -qx "1"; then
+    if mysql_output_is_one "${out}"; then
         echo "ok"; return 0
     fi
     if echo "${out}" | grep -qiE "Can't connect|Connection refused|timed out|Unknown MySQL server host"; then
