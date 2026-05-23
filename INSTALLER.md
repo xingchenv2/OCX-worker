@@ -1,91 +1,180 @@
 # OCI Worker 智能安装器（v2）
 
-本说明配合本仓库 **Releases** 中的 `install.sh` 使用。安装程序、JAR、WebSSH 二进制均从 **GitHub Releases** 下载，**不需要**在本机保留任何业务源码。
+> 这是 **新增的可选安装方案**，与原 `deploy.sh` / `update.sh` 完全独立。  
+> **现有用户什么都不用改**，原方案继续可用。  
+> 想要更友好的安装体验、内置管理命令、配置回滚保护，就用这个。
+
+## 它解决了什么
+
+| 痛点                                       | 原 deploy.sh                  | 新 install.sh                       |
+| ------------------------------------------ | ----------------------------- | ----------------------------------- |
+| 装完要 `nano application.yml` 手改 DB 配置 | ✅ 需要                       | ❌ 向导里直接填                     |
+| 数据库连不上时不知道为什么                 | 自己排查                      | 自动诊断，给精确修复建议            |
+| 用 1Panel/宝塔已有 MySQL                   | 自己改 yml                    | 向导分支，自动测试 + 修字符集       |
+| 配置改坏了服务起不来                       | 手动恢复                      | 自动回滚到上一版                    |
+| 升级要敲一堆命令                           | `update.sh`                   | `ociworker update` 或重跑 install   |
+| 日常运维（看日志/重启/备份/卸载）          | 一堆 systemctl/journalctl     | `ociworker` 进菜单                  |
+| WebSSH 依赖 Docker                         | 必须                          | 二进制版，无 Docker 依赖            |
+
+## 与原方案的关系
+
+- **后端 Java 代码 / 前端 Vue 代码 / WebSSH Go 源码：一字未改**
+- 原 `deploy.sh` / `update.sh` / `webssh/Dockerfile` / `webssh/docker-compose.yml`：一字未改
+- `latest` GitHub Release（JAR）：原 `build.yml` 继续维护，不动
+- 新方案的产物全部发布到 **独立的 `installer-latest` Release**，互不影响
+- systemd 服务名都叫 `oci-worker`，新老方案在系统层面**互兼容**
+  - 用 `deploy.sh` 装的服务器，可以直接跑 `install.sh` 平滑接管（自动识别为升级）
+  - 反之亦然
 
 ## 安装
 
-**Debian** 默认 root 为 dash，不支持 `bash <(curl …)` 这种写法，**建议先下载再执行**：
+> Debian 默认 root shell 是 dash，不支持 `<()` 进程替换。**推荐先下载再执行**：
 
 ```bash
 curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-latest/install.sh -o /tmp/install.sh
-sudo bash /tmp/install.sh
+bash /tmp/install.sh
 ```
 
-或用 root 执行 `bash /tmp/install.sh`（未用 `sudo` 时也请保证是 root）。
-
-可选「管道」方式（环境为 bash 时）：
+或者管道执行（Ubuntu / CentOS 等 root 是 bash 的也可以用 `bash <(curl ...)`）：
 
 ```bash
-curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-latest/install.sh | sudo bash
+curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-latest/install.sh | bash
 ```
 
-向导会依次询问：
+向导会问：
 
-1. 数据库方式：**已有 MySQL（1Panel/宝塔等）** / **Docker 装 MySQL 8** / **本机 root 自动建库**  
-2. 数据库连接（会做多项自检，不通过会给出可操作的修复建议）  
-3. Web 服务端口  
+1. 数据库使用方式：**1) 已有 MySQL（1Panel/宝塔） / 2) 用 Docker 装 / 3) 我有 root**
+2. 数据库连接信息（自动测试 + 自检）
+3. Web 端口
 
-**管理员账号**不在 SSH 里设置，服务起来后在浏览器 `http://<IP>:<端口>` 走首次设置流程；密码以数据库中的哈希保存，比写在配置文件里更安全。
+5 分钟搞定，**不在 SSH 里设置管理员账号密码**——服务起来后到浏览器 `http://<ip>:<端口>` 完成首次设置即可。这是后端的设计：账号密码以 sha256 哈希存进数据库，不进 yml，更安全。
+
+### 动效 / Orbis UI 版
+
+预编译 JAR 发布在独立的 **[ui-latest](https://github.com/OCIworker/OCIworker/releases/tag/ui-latest)**。与上面同一脚本，任选一：
+
+- `env OCI_WORKER_UI=1 bash /tmp/install.sh`
+- `bash /tmp/install.sh --ui`
+
+升级走 `ociworker update` 或重跑 `install.sh` 时，若已存在 `/opt/oci-worker/.use-ui-jar`，会续拉 `ui-latest`。改回与 `master` 一致的 JAR：环境变量 `OCI_USE_MASTER_JAR=1` 同脚本升级，或先删除 `.use-ui-jar` 再升级。
 
 ## 升级
 
 任选其一：
 
 ```bash
-sudo ociworker update
+ociworker update
 ```
 
-或再次执行之前保存的 `install.sh`（**升级模式**只更新 JAR 与 `oci-webssh` 二进制，**不会**乱改 `application.yml` 和已有数据库）。失败时安装器/脚本会尽量回滚到上一版 JAR。
+或重跑 install.sh —— 它会自动识别为升级模式，**只换 JAR 和 webssh 二进制，不动 application.yml 和数据库**。
 
-## 与 1Panel / 宝塔 已有 MySQL 配合
+升级失败会自动回滚到旧 JAR。
 
-先在面板中：
+## 用 1Panel / 宝塔已有 MySQL
 
-1. 建库名 `oci_worker`，字符集 **utf8mb4**，排序 **utf8mb4_unicode_ci**  
-2. 用户授权该库 **全部**权限，**主机**选 **%**（不要只 `localhost`）  
-3. 记录主机、端口、用户、密码
+向导第一步选 **1**，准备工作：
 
-向导第一步选「1）已有 MySQL」并填写。若连接失败，脚本会结合错误信息提示（例如主机限制、版本低于 8.0 等）。
+1. 在面板里建库：库名 `oci_worker`，字符集 `utf8mb4 / utf8mb4_unicode_ci`
+2. 建用户：用户名 `ociworker`，授权到 `oci_worker` 库，**访问权限选"所有人(%)"**
+   （选 localhost 会因为 `127.0.0.1` ≠ `localhost` 导致认证失败，向导会识别并提示）
+3. 把数据库连接密码记下来填进向导
 
-## 安装后的路径
+向导会自动检查：
 
-| 路径 | 说明 |
+- 端口能否连通
+- 登录是否成功（失败时识别 host 限制问题并给修复指引）
+- MySQL 版本 ≥ 8.0
+- 库存在 / 字符集 / DDL 权限
+
+任何一项不通过都会**给出具体的解决步骤**，绝不让你卡死。
+
+## 用 Docker 装 MySQL（向导选 ②）
+
+与 README 末尾「经典 deploy + 手写 docker run」**不是同一条流程**；v2 安装器会：
+
+- 创建/复用容器 **`oci-worker-mysql`**，端口 **`127.0.0.1:3306`**
+- 把连接写入 `/opt/oci-worker/application.yml`（`spring.datasource.url` 为 `localhost:3306`）
+- 部署 `/usr/local/bin/ociworker`
+
+本机**多数不会**安装 `mysql` 客户端（`ensure_mysql_client` 失败时安装器会警告并继续），因此：
+
+| 操作 | 做法 |
 |------|------|
-| `/opt/oci-worker/oci-worker.jar` | 主程序 |
-| `/opt/oci-worker/oci-webssh` | WebSSH 二进制（端口 8008，与面板反代配合） |
-| `/opt/oci-worker/application.yml` | 主配置，权限通常为 600 |
-| `/opt/oci-worker/application.yml.bak.*` | 自动备份，改坏可手工恢复 |
-| `/opt/oci-worker/keys/` | OCI PEM 等 |
-| `/opt/oci-worker/backups/` | `ociworker backup` 输出 |
-| `/etc/systemd/system/oci-worker.service` | 主服务 |
-| `/etc/systemd/system/oci-webssh.service` | WebSSH 服务 |
-| `/usr/local/bin/ociworker` | 管理脚本 |
-| `/usr/local/bin/java` | 安装器为 JRE 21 创建的软链（若用安装器自带 JDK 路径） |
+| 清除 TG 绑定 | **`sudo ociworker tg-clean`** 或菜单 **11）清除Tg绑定**（自动 `docker exec oci-worker-mysql`，密码来自 yml） |
+| 查库里的 TG 配置 | 优先用 `ociworker tg-clean` 前的列表；勿猜密码，以 yml 里 `spring.datasource.password` 为准 |
+| 备份数据库 | 建议 `apt install -y default-mysql-client` 后 `ociworker backup`，或自行 `docker exec oci-worker-mysql mysql …` |
 
-## 日常：`ociworker` 命令
+清除后提示：**telegram通知已清除，请登录面板重新绑定。**
+
+## 日常管理：`ociworker`
 
 ```bash
-ociworker                  # 交互菜单
-ociworker status
-ociworker start
-ociworker stop
-ociworker restart
-ociworker logs
-ociworker config
-ociworker update
-ociworker backup
-ociworker restore <备份包>
-ociworker version
-ociworker uninstall
+ociworker                  # 进交互菜单
+ociworker status           # 服务状态
+ociworker start/stop/restart
+ociworker logs             # 实时日志
+ociworker config           # 改端口/数据库（含回滚；账号密码请到 Web 设置）
+ociworker update           # 一键升级
+ociworker backup           # 备份数据库 + 配置 + keys
+ociworker restore <file>   # 从备份恢复
+ociworker tg-clean         # 清除 Telegram 绑定（无 mysql 客户端时自动 docker exec oci-worker-mysql）
+ociworker version          # 查看版本
+ociworker uninstall        # 卸载（每步都问，给后悔药）
 ```
 
-WebSSH 与主服务由同一套逻辑协调启停，**不需要**单独为 WebSSH 开一套陌生命令；面板内访问 Web 端口即可用 WebSSH 能力（具体见产品界面）。
+> WebSSH 是 OCI Worker 的内置组件，与主服务一起自动启停，**不需要也不提供单独的开关命令**。
 
-## 安全
+`config` 修改时会**自动备份原 yml**，新配置启动失败时**自动回滚**到上一版，保证不会因为手抖把面板搞登不进去。
 
-- 云安全组/防火墙一般**只放行业务 Web 端口**（如 8818），**不要**把 WebSSH 的 8008 对公网大开（若仅本机+反代，按你当前网络架构收紧即可）。  
-- MySQL 建议只监听 `127.0.0.1`；对外勿暴露 3306。  
-- 生产环境建议用 **HTTPS**（Nginx 等反代 + 证书）。
+## 安装路径
+
+| 路径                                     | 用途                          |
+| ---------------------------------------- | ----------------------------- |
+| `/opt/oci-worker/oci-worker.jar`         | 主程序 JAR                    |
+| `/opt/oci-worker/oci-webssh`             | WebSSH 二进制                 |
+| `/opt/oci-worker/application.yml`        | 配置文件（权限 600）          |
+| `/opt/oci-worker/application.yml.bak.*`  | 自动备份历史                  |
+| `/opt/oci-worker/keys/`                  | OCI PEM 密钥                  |
+| `/opt/oci-worker/backups/`               | `ociworker backup` 输出目录   |
+| `/etc/systemd/system/oci-worker.service` | 主程序 systemd                |
+| `/etc/systemd/system/oci-webssh.service` | WebSSH systemd                |
+| `/usr/local/bin/ociworker`               | 管理脚本                      |
+| `/usr/local/bin/java`                    | JDK 21 软链                   |
+
+## 与原 deploy.sh 的兼容
+
+| 场景                                   | 行为                                                |
+| -------------------------------------- | --------------------------------------------------- |
+| 老用户（用 deploy.sh 装的）跑 install  | 自动识别为升级，保留所有数据和配置                 |
+| 老用户继续用 update.sh                 | 完全正常，新方案不影响                              |
+| 检测到 Docker 版 WebSSH 容器           | 询问是否切换到二进制版（拒绝则跳过，避免端口冲突） |
+| 数据库表结构差异                       | 后端 `DatabaseGuardService` 启动时自动 ALTER       |
+
+## 安全提醒
+
+- WebSSH 端口 `8008` 监听 `0.0.0.0`（与原 Docker 版一致）。**云厂商安全组只放行 Web 端口**（默认 8818），不要把 8008 暴露公网
+- OCI Worker 已通过反向代理把 WebSSH 嵌入主面板，访问主端口即可使用 WebSSH 全部功能
+- 推荐用 Nginx 反代 + Let's Encrypt HTTPS 保护主端口
+- MySQL 端口务必绑定 `127.0.0.1`
+
+## 私有仓库使用说明
+
+如果项目仓库变成私有：
+
+1. `installer-latest` Release 的下载链接需要带 GitHub Token：
+
+   ```bash
+   GH_TOKEN=ghp_xxx
+   curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
+     https://api.github.com/repos/OCIworker/OCIworker/releases/tags/installer-latest \
+     | grep browser_download_url | grep install.sh | cut -d'"' -f4 \
+     | xargs curl -fsSL -H "Authorization: token ${GH_TOKEN}" -o install.sh
+   bash install.sh
+   ```
+
+2. 或者把 `install.sh` 镜像到一个公开静态地址（自建 OSS / R2 / 公开 gist），保持一行装体验
+
+3. 仓库 Settings → Deploy keys 里加一个只读 key，写入 `install.sh` 头部，避免每次手动传 token（安全性需评估）
 
 ## 卸载
 
@@ -93,18 +182,31 @@ WebSSH 与主服务由同一套逻辑协调启停，**不需要**单独为 WebSS
 ociworker uninstall
 ```
 
-按提示分步确认（是否删数据目录、是否删 Docker 库容器等），避免误删。
+每一步都会问你（删 `/opt/oci-worker`？删 MySQL 容器？删数据目录？），不会一刀切。
 
-## 常见问题
+## FAQ
 
-**Q：`curl` 下不到 `install.sh` 或返回 404？**  
-A：先确认本机**能访问 `github.com`**。再打开 [Releases 里 `installer-latest`](https://github.com/OCIworker/OCIworker/releases/tag/installer-latest) 看是否有 **`install.sh` 附件**。第一行**必须**写全：`-o /tmp/install.sh`（不能只写到 `/tmp/`）。
+**Q: 装了新版还能切回旧版吗？**  
+A: 能。`ociworker uninstall` 时**保留 `/opt/oci-worker`** 目录（选 N），然后跑原 `deploy.sh` 即可。或者直接用 `deploy.sh` 重写 systemd 单元，老用户怎么用就怎么用。
 
-**Q：改坏 `application.yml` 登不进去？**  
-A：看 `/opt/oci-worker/application.yml.bak.*`；若用了 `ociworker config`，一般会自动尝试回滚。
+**Q: 升级会丢数据吗？**  
+A: 不会。升级模式只换 JAR + webssh 二进制，**完全不动 application.yml 和数据库**。后端启动时由 `DatabaseGuardService` 自动 ALTER 加新表/新字段，旧数据 100% 保留。
 
-**Q：升级会丢数据吗？**  
-A：正常**升级模式**不覆盖库与 yml 内容，只换 JAR 和 WebSSH 二进制。数据库结构由应用启动时按需自动迁移，具体以版本说明为准。
+**Q: 后端代码升级了，能直接 install 吗？**  
+A: 可以。新版 JAR 推到 `latest` Release 后，`ociworker update` 或重跑 `install.sh` 都会拉最新版本。
 
-**Q：为什么向导里不直接设管理员密码？**  
-A：以浏览器首次设置为准，秘密写入数据库，避免在 SSH/脚本里散落明文或误解 `application.yml` 里的占位字段。
+**Q: 改坏了 application.yml 怎么办？**  
+A: `ociworker config` 修改时会自动备份并在启动失败时回滚。手动改的话可以从 `/opt/oci-worker/application.yml.bak.*` 找历史版本。
+
+**Q: 为什么不在脚本里设置管理员账号密码？**  
+A: 后端 `AuthController` 判断"是否首次安装"只看数据库 `oci_kv` 表里有没有 `web_account / web_password` 两条记录，**不读** `application.yml` 里的 `web.account / web.password`。yml 里的两个字段只在数据库被清空、用户尚未在浏览器完成 Setup 时作为兜底默认值。所以脚本里设置的账号密码不会生效，反而误导用户，我们干脆去掉这一步。后端这样设计是因为数据库里能存 sha256 哈希，比 yml 明文更安全。
+
+**Q: 忘记 Web 管理员密码怎么办？**  
+A: 三种办法：
+1. 如果绑过 Telegram 登录：Web 登录页选"TG 验证码"绕过密码登录，登入后改密码
+2. 直接清掉数据库里的密码记录，触发重新 Setup：
+   ```sql
+   DELETE FROM oci_kv WHERE type='sys_config' AND code IN ('web_account','web_password');
+   ```
+   清完刷新浏览器，会回到 Setup 页，重新设置即可（其他数据不丢）
+3. 万不得已：`ociworker uninstall` 选保留数据，重新安装一次（数据保留，密码会回到 Setup 流程）
