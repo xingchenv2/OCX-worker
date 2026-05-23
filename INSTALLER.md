@@ -1,30 +1,25 @@
 # OCI Worker 智能安装器（v2）
 
-> 这是 **新增的可选安装方案**，与原 `deploy.sh` / `update.sh` 完全独立。  
-> **现有用户什么都不用改**，原方案继续可用。  
-> 想要更友好的安装体验、内置管理命令、配置回滚保护，就用这个。
+> 本仓库提供 **install.sh + ociworker CLI** 与 GitHub Releases（`latest` / `installer-latest`）。  
+> 新机器请用下方向导安装；已部署机器可用 `ociworker update` 或重跑 `install.sh` 升级。
 
 ## 它解决了什么
 
-| 痛点                                       | 原 deploy.sh                  | 新 install.sh                       |
+| 痛点                                       | 手动改配置 / 敲命令           | 新 install.sh                       |
 | ------------------------------------------ | ----------------------------- | ----------------------------------- |
 | 装完要 `nano application.yml` 手改 DB 配置 | ✅ 需要                       | ❌ 向导里直接填                     |
 | 数据库连不上时不知道为什么                 | 自己排查                      | 自动诊断，给精确修复建议            |
 | 用 1Panel/宝塔已有 MySQL                   | 自己改 yml                    | 向导分支，自动测试 + 修字符集       |
 | 配置改坏了服务起不来                       | 手动恢复                      | 自动回滚到上一版                    |
-| 升级要敲一堆命令                           | `update.sh`                   | `ociworker update` 或重跑 install   |
+| 升级要敲一堆命令                           | 多步 systemctl + curl         | `ociworker update` 或重跑 install   |
 | 日常运维（看日志/重启/备份/卸载）          | 一堆 systemctl/journalctl     | `ociworker` 进菜单                  |
-| WebSSH 依赖 Docker                         | 必须                          | 二进制版，无 Docker 依赖            |
+| WebSSH 依赖 Docker                         | 旧方案常见                    | 二进制版，无 Docker 依赖            |
 
-## 与原方案的关系
+## 发布产物
 
-- **后端 Java 代码 / 前端 Vue 代码 / WebSSH Go 源码：一字未改**
-- 原 `deploy.sh` / `update.sh` / `webssh/Dockerfile` / `webssh/docker-compose.yml`：一字未改
-- `latest` GitHub Release（JAR）：原 `build.yml` 继续维护，不动
-- 新方案的产物全部发布到 **独立的 `installer-latest` Release**，互不影响
-- systemd 服务名都叫 `oci-worker`，新老方案在系统层面**互兼容**
-  - 用 `deploy.sh` 装的服务器，可以直接跑 `install.sh` 平滑接管（自动识别为升级）
-  - 反之亦然
+- 应用 JAR：**[`latest`](https://github.com/OCIworker/OCIworker/releases/tag/latest)** Release
+- 安装器与 CLI：**[`installer-latest`](https://github.com/OCIworker/OCIworker/releases/tag/installer-latest)** Release（`install.sh`、`ociworker`）
+- systemd 服务名均为 `oci-worker`，与历史手动部署路径兼容；若目录 `/opt/oci-worker` 已存在，`install.sh` 会识别为升级模式
 
 ## 安装
 
@@ -48,15 +43,6 @@ curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-la
 3. Web 端口
 
 5 分钟搞定，**不在 SSH 里设置管理员账号密码**——服务起来后到浏览器 `http://<ip>:<端口>` 完成首次设置即可。这是后端的设计：账号密码以 sha256 哈希存进数据库，不进 yml，更安全。
-
-### 动效 / Orbis UI 版
-
-预编译 JAR 发布在独立的 **[ui-latest](https://github.com/OCIworker/OCIworker/releases/tag/ui-latest)**。与上面同一脚本，任选一：
-
-- `env OCI_WORKER_UI=1 bash /tmp/install.sh`
-- `bash /tmp/install.sh --ui`
-
-升级走 `ociworker update` 或重跑 `install.sh` 时，若已存在 `/opt/oci-worker/.use-ui-jar`，会续拉 `ui-latest`。改回与 `master` 一致的 JAR：环境变量 `OCI_USE_MASTER_JAR=1` 同脚本升级，或先删除 `.use-ui-jar` 再升级。
 
 ## 升级
 
@@ -90,7 +76,7 @@ ociworker update
 
 ## 用 Docker 装 MySQL（向导选 ②）
 
-与 README 末尾「经典 deploy + 手写 docker run」**不是同一条流程**；v2 安装器会：
+v2 安装器会：
 
 - 创建/复用容器 **`oci-worker-mysql`**，端口 **`127.0.0.1:3306`**
 - 把连接写入 `/opt/oci-worker/application.yml`（`spring.datasource.url` 为 `localhost:3306`）
@@ -141,14 +127,13 @@ ociworker uninstall        # 卸载（每步都问，给后悔药）
 | `/usr/local/bin/ociworker`               | 管理脚本                      |
 | `/usr/local/bin/java`                    | JDK 21 软链                   |
 
-## 与原 deploy.sh 的兼容
+## 与已有部署的兼容
 
 | 场景                                   | 行为                                                |
 | -------------------------------------- | --------------------------------------------------- |
-| 老用户（用 deploy.sh 装的）跑 install  | 自动识别为升级，保留所有数据和配置                 |
-| 老用户继续用 update.sh                 | 完全正常，新方案不影响                              |
+| `/opt/oci-worker` 已存在时跑 install   | 自动识别为升级，保留数据和 `application.yml`       |
 | 检测到 Docker 版 WebSSH 容器           | 询问是否切换到二进制版（拒绝则跳过，避免端口冲突） |
-| 数据库表结构差异                       | 后端 `DatabaseGuardService` 启动时自动 ALTER       |
+| 数据库表结构差异                       | 后端启动时自动 ALTER                               |
 
 ## 安全提醒
 
@@ -186,8 +171,8 @@ ociworker uninstall
 
 ## FAQ
 
-**Q: 装了新版还能切回旧版吗？**  
-A: 能。`ociworker uninstall` 时**保留 `/opt/oci-worker`** 目录（选 N），然后跑原 `deploy.sh` 即可。或者直接用 `deploy.sh` 重写 systemd 单元，老用户怎么用就怎么用。
+**Q: 装了新版还能切回旧版 JAR 吗？**  
+A: 能。`ociworker update` 会从 `latest` Release 拉取；升级失败会自动回滚到上一版 JAR。若要整包重装，可用 `ociworker uninstall` 时保留 `/opt/oci-worker` 数据目录后再跑 `install.sh`。
 
 **Q: 升级会丢数据吗？**  
 A: 不会。升级模式只换 JAR + webssh 二进制，**完全不动 application.yml 和数据库**。后端启动时由 `DatabaseGuardService` 自动 ALTER 加新表/新字段，旧数据 100% 保留。
