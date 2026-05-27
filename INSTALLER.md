@@ -52,7 +52,7 @@ curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-la
 ociworker update
 ```
 
-或重跑 install.sh —— 它会自动识别为升级模式，**只换 JAR 和 webssh 二进制，不动 application.yml 和数据库**。
+或重跑 install.sh —— 它会自动识别为升级模式，**只换 JAR（终端已并入主程序），不动 application.yml 和数据库**；升级时会停用并清理旧版独立 `oci-webssh` 服务（若存在）。
 
 升级失败会自动回滚到旧 JAR。
 
@@ -117,13 +117,11 @@ ociworker uninstall        # 卸载（每步都问，给后悔药）
 | 路径                                     | 用途                          |
 | ---------------------------------------- | ----------------------------- |
 | `/opt/oci-worker/oci-worker.jar`         | 主程序 JAR                    |
-| `/opt/oci-worker/oci-webssh`             | WebSSH 二进制                 |
 | `/opt/oci-worker/application.yml`        | 配置文件（权限 600）          |
 | `/opt/oci-worker/application.yml.bak.*`  | 自动备份历史                  |
 | `/opt/oci-worker/keys/`                  | OCI PEM 密钥                  |
 | `/opt/oci-worker/backups/`               | `ociworker backup` 输出目录   |
 | `/etc/systemd/system/oci-worker.service` | 主程序 systemd                |
-| `/etc/systemd/system/oci-webssh.service` | WebSSH systemd                |
 | `/usr/local/bin/ociworker`               | 管理脚本                      |
 | `/usr/local/bin/java`                    | JDK 21 软链                   |
 
@@ -132,7 +130,7 @@ ociworker uninstall        # 卸载（每步都问，给后悔药）
 | 场景                                   | 行为                                                |
 | -------------------------------------- | --------------------------------------------------- |
 | `/opt/oci-worker` 已存在时跑 install   | 自动识别为升级，保留数据和 `application.yml`       |
-| 检测到 Docker 版 WebSSH 容器           | 询问是否切换到二进制版（拒绝则跳过，避免端口冲突） |
+| 检测到 Docker 或旧版独立 WebSSH        | 升级时提示并清理，避免与内置终端冲突               |
 | 数据库表结构差异                       | 后端启动时自动 ALTER                               |
 
 ## 安全提醒
@@ -175,7 +173,7 @@ ociworker uninstall
 A: 能。`ociworker update` 会从 `latest` Release 拉取；升级失败会自动回滚到上一版 JAR。若要整包重装，可用 `ociworker uninstall` 时保留 `/opt/oci-worker` 数据目录后再跑 `install.sh`。
 
 **Q: 升级会丢数据吗？**  
-A: 不会。升级模式只换 JAR + webssh 二进制，**完全不动 application.yml 和数据库**。后端启动时由 `DatabaseGuardService` 自动 ALTER 加新表/新字段，旧数据 100% 保留。
+A: 不会。升级模式只换 JAR，**完全不动 application.yml 和数据库**。后端启动时由 `DatabaseGuardService` 自动 ALTER 加新表/新字段，旧数据 100% 保留。
 
 **Q: 后端代码升级了，能直接 install 吗？**  
 A: 可以。新版 JAR 推到 `latest` Release 后，`ociworker update` 或重跑 `install.sh` 都会拉最新版本。
