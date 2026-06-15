@@ -27,7 +27,7 @@ readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly JAR_NAME="ocx-worker.jar"
-readonly JAR_ASSET="ocx-worker-1.0.0.jar"
+readonly JAR_ASSET="ocx-worker-1.0.1.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
 readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -74,6 +74,22 @@ die()     { err "$*"; exit 1; }
 section() { printf "\n%s%s== %s ==%s\n" "${C_BOLD}" "${C_CYAN}" "$*" "${C_RESET}"; }
 
 # Read a value with default. Use stderr for the prompt so command substitution works.
+_read_answer() {
+    local __var="$1" __silent="${2:-0}" __reply=""
+    if [ -t 0 ] && [ -r /dev/tty ]; then
+        if [ "${__silent}" = "1" ]; then
+            IFS= read -r -s __reply </dev/tty || __reply=""
+        else
+            IFS= read -r __reply </dev/tty || __reply=""
+        fi
+    else
+        # Non-interactive mode: allow piping answers into the installer.
+        # `read -s` is only useful on a TTY; stdin fallback must be plain read.
+        IFS= read -r __reply || __reply=""
+    fi
+    printf -v "${__var}" '%s' "${__reply}"
+}
+
 ask() {
     local prompt="$1" default="${2:-}" reply
     if [ -n "${default}" ]; then
@@ -81,7 +97,7 @@ ask() {
     else
         printf "%s: " "${prompt}" >&2
     fi
-    IFS= read -r reply </dev/tty || reply=""
+    _read_answer reply 0
     if [ -z "${reply}" ]; then
         printf "%s" "${default}"
     else
@@ -92,7 +108,7 @@ ask() {
 ask_password() {
     local prompt="$1" reply
     printf "%s: " "${prompt}" >&2
-    IFS= read -r -s reply </dev/tty || reply=""
+    _read_answer reply 1
     printf "\n" >&2
     printf "%s" "${reply}"
 }
@@ -107,7 +123,7 @@ ask_yes_no() {
     esac
     while true; do
         printf "%s %s: " "${prompt}" "${hint}" >&2
-        IFS= read -r reply </dev/tty || reply=""
+        _read_answer reply 0
         reply="${reply:-${default}}"
         case "${reply}" in
             Y|y|YES|yes|Yes) printf "y"; return 0 ;;
@@ -127,7 +143,7 @@ ask_choice() {
     done
     while true; do
         printf "请选择 [%s]: " "${default}" >&2
-        IFS= read -r reply </dev/tty || reply=""
+        _read_answer reply 0
         reply="${reply:-${default}}"
         if [[ "${reply}" =~ ^[0-9]+$ ]] && [ "${reply}" -ge 1 ] && [ "${reply}" -le "${#options[@]}" ]; then
             printf "%s" "${reply}"
@@ -575,11 +591,16 @@ prompt_db_existing() {
 
 EOF
     while true; do
-        DB_HOST="$(ask "数据库地址" "127.0.0.1")"
-        DB_PORT="$(ask "数据库端口" "3306")"
-        DB_NAME="$(ask "数据库名"   "oci_worker")"
-        DB_USER="$(ask "用户名"     "ocxworker")"
-        DB_PASS="$(ask_password "密码")"
+        DB_HOST="${OCX_DB_HOST:-}"
+        [ -n "${DB_HOST}" ] || DB_HOST="$(ask "数据库地址" "127.0.0.1")"
+        DB_PORT="${OCX_DB_PORT:-}"
+        [ -n "${DB_PORT}" ] || DB_PORT="$(ask "数据库端口" "3306")"
+        DB_NAME="${OCX_DB_NAME:-}"
+        [ -n "${DB_NAME}" ] || DB_NAME="$(ask "数据库名"   "oci_worker")"
+        DB_USER="${OCX_DB_USER:-}"
+        [ -n "${DB_USER}" ] || DB_USER="$(ask "用户名"     "ocxworker")"
+        DB_PASS="${OCX_DB_PASSWORD:-}"
+        [ -n "${DB_PASS}" ] || DB_PASS="$(ask_password "密码")"
 
         if [ -z "${DB_PASS}" ]; then
             warn "密码不能为空"
@@ -655,15 +676,22 @@ prompt_db_docker() {
     fi
     DB_HOST="127.0.0.1"
     DB_PORT="3306"
-    DB_NAME="$(ask "数据库名"   "oci_worker")"
-    DB_USER="$(ask "用户名"     "ocxworker")"
-    DB_PASS="$(ask_password "新建用户密码（至少 8 位，建议含字母数字）")"
+    DB_NAME="${OCX_DB_NAME:-}"
+    [ -n "${DB_NAME}" ] || DB_NAME="$(ask "数据库名"   "oci_worker")"
+    DB_USER="${OCX_DB_USER:-}"
+    [ -n "${DB_USER}" ] || DB_USER="$(ask "用户名"     "ocxworker")"
+    DB_PASS="${OCX_DB_PASSWORD:-}"
+    [ -n "${DB_PASS}" ] || DB_PASS="$(ask_password "新建用户密码（至少 8 位，建议含字母数字）")"
     while [ "${#DB_PASS}" -lt 6 ]; do
         warn "密码太短"
+        if [ -n "${OCX_DB_PASSWORD:-}" ]; then
+            die "OCX_DB_PASSWORD 至少需要 6 位"
+        fi
         DB_PASS="$(ask_password "新建用户密码")"
     done
     local root_pass
-    root_pass="$(ask_password "root 密码（用于初始化，可与上方相同）")"
+    root_pass="${OCX_MYSQL_ROOT_PASSWORD:-}"
+    [ -n "${root_pass}" ] || root_pass="$(ask_password "root 密码（用于初始化，可与上方相同）")"
     [ -n "${root_pass}" ] || root_pass="${DB_PASS}"
 
     if docker ps -a --format '{{.Names}}' | grep -qx "ocx-worker-mysql"; then
@@ -708,17 +736,27 @@ prompt_db_docker() {
 prompt_db_root() {
     # User has MySQL root, let us auto-create db + user.
     section "用 root 自动创建数据库和用户"
-    DB_HOST="$(ask "数据库地址" "127.0.0.1")"
-    DB_PORT="$(ask "数据库端口" "3306")"
+    DB_HOST="${OCX_DB_HOST:-}"
+    [ -n "${DB_HOST}" ] || DB_HOST="$(ask "数据库地址" "127.0.0.1")"
+    DB_PORT="${OCX_DB_PORT:-}"
+    [ -n "${DB_PORT}" ] || DB_PORT="$(ask "数据库端口" "3306")"
     local root_user root_pass
-    root_user="$(ask "root 用户名" "root")"
-    root_pass="$(ask_password "root 密码")"
+    root_user="${OCX_MYSQL_ROOT_USER:-}"
+    [ -n "${root_user}" ] || root_user="$(ask "root 用户名" "root")"
+    root_pass="${OCX_MYSQL_ROOT_PASSWORD:-}"
+    [ -n "${root_pass}" ] || root_pass="$(ask_password "root 密码")"
 
-    DB_NAME="$(ask "新建数据库名" "oci_worker")"
-    DB_USER="$(ask "新建用户名"   "ocxworker")"
-    DB_PASS="$(ask_password "新建用户密码")"
+    DB_NAME="${OCX_DB_NAME:-}"
+    [ -n "${DB_NAME}" ] || DB_NAME="$(ask "新建数据库名" "oci_worker")"
+    DB_USER="${OCX_DB_USER:-}"
+    [ -n "${DB_USER}" ] || DB_USER="$(ask "新建用户名"   "ocxworker")"
+    DB_PASS="${OCX_DB_PASSWORD:-}"
+    [ -n "${DB_PASS}" ] || DB_PASS="$(ask_password "新建用户密码")"
     while [ "${#DB_PASS}" -lt 6 ]; do
         warn "密码太短"
+        if [ -n "${OCX_DB_PASSWORD:-}" ]; then
+            die "OCX_DB_PASSWORD 至少需要 6 位"
+        fi
         DB_PASS="$(ask_password "新建用户密码")"
     done
 
@@ -768,10 +806,18 @@ EOF
 run_db_wizard() {
     section "数据库配置"
     local choice
-    choice="$(ask_choice "请选择数据库使用方式：" 1 \
-        "我已经有 MySQL（1Panel/宝塔/已安装的服务），手动填写连接信息" \
-        "我没有数据库，让脚本用 Docker 帮我装一个独立 MySQL 8.0" \
-        "我有 MySQL root 账号，让脚本帮我自动建库建用户")"
+    case "${OCX_INSTALL_DB_MODE:-}" in
+        existing) choice="1" ;;
+        docker)   choice="2" ;;
+        root)     choice="3" ;;
+        "")
+            choice="$(ask_choice "请选择数据库使用方式：" 1 \
+                "我已经有 MySQL（1Panel/宝塔/已安装的服务），手动填写连接信息" \
+                "我没有数据库，让脚本用 Docker 帮我装一个独立 MySQL 8.0" \
+                "我有 MySQL root 账号，让脚本帮我自动建库建用户")"
+            ;;
+        *) die "OCX_INSTALL_DB_MODE 只能是 existing、docker 或 root" ;;
+    esac
     ensure_mysql_client
     case "${choice}" in
         1) prompt_db_existing || die "数据库配置未完成，已退出安装。修复连接问题后可重跑 install.sh" ;;
@@ -797,7 +843,8 @@ WEB_DEFAULT_PASSWORD=""
 prompt_web() {
     section "Web 服务配置"
     while true; do
-        WEB_PORT="$(ask "OCX-worker Web 端口" "8818")"
+        WEB_PORT="${OCX_WEB_PORT:-}"
+        [ -n "${WEB_PORT}" ] || WEB_PORT="$(ask "OCX-worker Web 端口" "8818")"
         if [[ "${WEB_PORT}" =~ ^[0-9]+$ ]] && [ "${WEB_PORT}" -ge 1 ] && [ "${WEB_PORT}" -le 65535 ]; then
             if [ "${WEB_PORT}" -eq 8008 ]; then
                 warn "端口 8008 不可用，请换一个"
@@ -889,6 +936,9 @@ EOF
 
 write_systemd_unit() {
     info "写入 systemd 服务：${SERVICE_NAME}..."
+    local java_bin
+    java_bin="$(command -v java || true)"
+    [ -n "${java_bin}" ] || die "未找到 java 可执行文件，请先安装 JDK/JRE 21"
     cat > "${SERVICE_FILE}" <<EOF
 [Unit]
 Description=OCX-worker
@@ -897,7 +947,7 @@ After=network.target docker.service
 [Service]
 Type=simple
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/local/bin/java -Xmx256m -Duser.timezone=Asia/Shanghai -Duser.dir=${INSTALL_DIR} -jar ${JAR_NAME} --spring.config.additional-location=file:${CONFIG_FILE}
+ExecStart=${java_bin} -Xmx256m -Duser.timezone=Asia/Shanghai -Duser.dir=${INSTALL_DIR} -jar ${JAR_NAME} --spring.config.additional-location=file:${CONFIG_FILE}
 Restart=on-failure
 RestartSec=10
 # 未设置时 systemd 常用默认约 90s，stop 期间脚本长时间无新日志，易被误认为卡死
@@ -908,7 +958,7 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1 || true
-    ok "systemd 服务已注册"
+    ok "systemd 服务已注册：${java_bin}"
 }
 
 # 已部署环境可能仍为旧版 unit（无 TimeoutStopSec），升级时 stop 会等满 systemd 默认超时（常见 ~90s）
