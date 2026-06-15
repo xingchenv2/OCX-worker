@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ocx-worker - Management CLI for OCX-worker
+# ocx - Management CLI for OCX Worker
 # -----------------------------------------------------------------------------
 # Usage:
-#   ocx-worker                  Interactive menu
-#   ocx-worker status           Show status of ocx-worker
+#   ocx                         Interactive menu
+#   ocx status           Show status of ocx-worker
 #   ocx-worker start            Start services
 #   ocx-worker stop             Stop services
 #   ocx-worker restart          Restart ocx-worker
-#   ocx-worker logs             Tail ocx-worker logs
-#   ocx-worker config           Modify port / database (rollback on failure)
-#   ocx-worker update           Run install.sh in upgrade mode
-#   ocx-worker backup           Backup db dump + application.yml + keys
-#   ocx-worker restore <file>   Restore from a backup tarball
-#   ocx-worker tg-clean         Clear Telegram bot binding (oci_kv); re-bind in web UI
-#   ocx-worker uninstall        Uninstall everything (asks before each step)
-#   ocx-worker version          Show installer version + jar info
+#   ocx logs             Tail ocx logs
+#   ocx config           Modify port / database (rollback on failure)
+#   ocx update           Run install.sh in upgrade mode
+#   ocx backup           Backup db dump + application.yml + keys
+#   ocx restore <file>   Restore from a backup tarball
+#   ocx tg-clean         Clear Telegram bot binding (oci_kv); re-bind in web UI
+#   ocx uninstall        Uninstall everything (asks before each step)
+#   ocx version          Show installer version + jar info
 #
 # This script never modifies the database schema and never edits files outside
 # /opt/ocx-worker, /etc/systemd/system/ocx-worker*.service.
@@ -86,12 +86,12 @@ ask_yes_no() {
 }
 
 require_root() {
-    if [ "$(id -u)" -ne 0 ]; then die "请用 root 运行：sudo ocx-worker $*"; fi
+    if [ "$(id -u)" -ne 0 ]; then die "请用 root 运行：sudo ocx $*"; fi
 }
 
 require_installed() {
     if [ ! -f "${CONFIG_FILE}" ] || [ ! -f "${INSTALL_DIR}/${JAR_NAME}" ]; then
-        die "未检测到 OCX-worker 安装，请先运行 install.sh"
+        die "未检测到 OCX Worker 安装，请先运行 install.sh"
     fi
 }
 
@@ -438,7 +438,7 @@ _change_database() {
     启动失败会自动回滚到上一份配置。
 
 [!] 如果是把数据迁移到新库（比如换到面板自带的 MySQL）：
-    请先 ocx-worker backup，把 dump.sql 导入新库后再来切连接。
+    请先 ocx backup，把 dump.sql 导入新库后再来切连接。
     否则切到空库后，登录页会变成首次设置（账号/租户/任务等数据
     看不到，本质是数据库被换走、新库还没数据）。
 
@@ -643,7 +643,7 @@ cmd_restore() {
     require_root restore
     require_installed
     local file="${1:-}"
-    [ -n "${file}" ] || die "用法：ocx-worker restore <backup-file.tar.gz>"
+    [ -n "${file}" ] || die "用法：ocx restore <backup-file.tar.gz>"
     [ -f "${file}" ] || die "文件不存在：${file}"
 
     warn "恢复将覆盖当前配置/密钥/数据库（不可逆）"
@@ -691,8 +691,8 @@ cmd_restore() {
 
 cmd_uninstall() {
     require_root uninstall
-    section "卸载 OCX-worker"
-    [ "$(ask_yes_no "确认要卸载 OCX-worker 吗？" "N")" = "y" ] || { info "已取消"; return 0; }
+    section "卸载 OCX Worker"
+    [ "$(ask_yes_no "确认要卸载 OCX Worker 吗？" "N")" = "y" ] || { info "已取消"; return 0; }
 
     info "停止服务..."
     systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
@@ -721,8 +721,8 @@ cmd_uninstall() {
         fi
     fi
 
-    if [ "$(ask_yes_no "删除管理脚本 ocx-worker？" "N")" = "y" ]; then
-        rm -f /usr/local/bin/ocx-worker
+    if [ "$(ask_yes_no "删除管理脚本 ocx？" "N")" = "y" ]; then
+        rm -f /usr/local/bin/ocx
         ok "已删除"
     fi
 
@@ -742,7 +742,7 @@ menu() {
     # In interactive menu mode, individual command failures must not exit
     # the whole script. Use `|| true` on every command invocation.
     while true; do
-        section "OCX-worker 管理"
+        section "OCX Worker 管理"
         cat <<EOF
   1) 查看状态        2) 启动        3) 停止        4) 重启
   5) 查看实时日志    6) 修改配置（含回滚）

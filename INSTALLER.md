@@ -1,7 +1,7 @@
-# OCX-worker 智能安装器（v2）
+# OCX Worker 智能安装器（v2）
 
 > 本仓库提供 **install.sh + ocx-worker CLI** 与 GitHub Releases（`latest` / `installer-latest`）。  
-> 新机器请用下方向导安装；已部署机器可用 `ocx-worker update` 或重跑 `install.sh` 升级。
+> 新机器请用下方向导安装；已部署机器可用 `ocx update` 或重跑 `install.sh` 升级。
 
 ## 它解决了什么
 
@@ -11,15 +11,15 @@
 | 数据库连不上时不知道为什么                 | 自己排查                      | 自动诊断，给精确修复建议            |
 | 用 1Panel/宝塔已有 MySQL                   | 自己改 yml                    | 向导分支，自动测试 + 修字符集       |
 | 配置改坏了服务起不来                       | 手动恢复                      | 自动回滚到上一版                    |
-| 升级要敲一堆命令                           | 多步 systemctl + curl         | `ocx-worker update` 或重跑 install   |
-| 日常运维（看日志/重启/备份/卸载）          | 一堆 systemctl/journalctl     | `ocx-worker` 进菜单                  |
+| 升级要敲一堆命令                           | 多步 systemctl + curl         | `ocx update` 或重跑 install   |
+| 日常运维（看日志/重启/备份/卸载）          | 一堆 systemctl/journalctl     | `ocx` 进菜单                  |
 | WebSSH 依赖 Docker                         | 旧方案常见                    | 二进制版，无 Docker 依赖            |
 
 ## 发布产物
 
 - 应用 JAR：**[`latest`](https://github.com/xingchenv2/OCX-worker/releases/tag/latest)** Release
-- 安装器与 CLI：**[`installer-latest`](https://github.com/xingchenv2/OCX-worker/releases/tag/installer-latest)** Release（`install.sh`、`ocx-worker`）
-- systemd 服务名均为 `ocx-worker`，与历史手动部署路径兼容；若目录 `/opt/ocx-worker` 已存在，`install.sh` 会识别为升级模式
+- 安装器与 CLI：**[`installer-latest`](https://github.com/xingchenv2/OCX-worker/releases/tag/installer-latest)** Release（`install.sh`、`ocx`）
+- systemd 服务名均为 `ocx`，与历史手动部署路径兼容；若目录 `/opt/ocx-worker` 已存在，`install.sh` 会识别为升级模式
 
 ## 安装
 
@@ -49,7 +49,7 @@ curl -fsSL https://github.com/xingchenv2/OCX-worker/releases/download/installer-
 任选其一：
 
 ```bash
-ocx-worker update
+ocx update
 ```
 
 或重跑 install.sh —— 它会自动识别为升级模式，**只换 JAR（终端已并入主程序），不动 application.yml 和数据库**；升级时会停用并清理旧版独立 `oci-webssh` 服务（若存在）。
@@ -80,35 +80,35 @@ v2 安装器会：
 
 - 创建/复用容器 **`ocx-worker-mysql`**，端口 **`127.0.0.1:3306`**
 - 把连接写入 `/opt/ocx-worker/application.yml`（`spring.datasource.url` 为 `localhost:3306`）
-- 部署 `/usr/local/bin/ocx-worker`
+- 部署 `/usr/local/bin/ocx`
 
 本机**多数不会**安装 `mysql` 客户端（`ensure_mysql_client` 失败时安装器会警告并继续），因此：
 
 | 操作 | 做法 |
 |------|------|
-| 清除 TG 绑定 | **`sudo ocx-worker tg-clean`** 或菜单 **11）清除Tg绑定**（自动 `docker exec ocx-worker-mysql`，密码来自 yml） |
-| 查库里的 TG 配置 | 优先用 `ocx-worker tg-clean` 前的列表；勿猜密码，以 yml 里 `spring.datasource.password` 为准 |
-| 备份数据库 | 建议 `apt install -y default-mysql-client` 后 `ocx-worker backup`，或自行 `docker exec ocx-worker-mysql mysql …` |
+| 清除 TG 绑定 | **`sudo ocx tg-clean`** 或菜单 **11）清除Tg绑定**（自动 `docker exec ocx-worker-mysql`，密码来自 yml） |
+| 查库里的 TG 配置 | 优先用 `ocx tg-clean` 前的列表；勿猜密码，以 yml 里 `spring.datasource.password` 为准 |
+| 备份数据库 | 建议 `apt install -y default-mysql-client` 后 `ocx backup`，或自行 `docker exec ocx-worker-mysql mysql …` |
 
 清除后提示：**telegram通知已清除，请登录面板重新绑定。**
 
-## 日常管理：`ocx-worker`
+## 日常管理：`ocx`
 
 ```bash
-ocx-worker                  # 进交互菜单
-ocx-worker status           # 服务状态
-ocx-worker start/stop/restart
-ocx-worker logs             # 实时日志
-ocx-worker config           # 改端口/数据库（含回滚；账号密码请到 Web 设置）
-ocx-worker update           # 一键升级
-ocx-worker backup           # 备份数据库 + 配置 + keys
-ocx-worker restore <file>   # 从备份恢复
-ocx-worker tg-clean         # 清除 Telegram 绑定（无 mysql 客户端时自动 docker exec ocx-worker-mysql）
-ocx-worker version          # 查看版本
-ocx-worker uninstall        # 卸载（每步都问，给后悔药）
+ocx                         # 进交互菜单
+ocx status           # 服务状态
+ocx start/stop/restart
+ocx logs             # 实时日志
+ocx config           # 改端口/数据库（含回滚；账号密码请到 Web 设置）
+ocx update           # 一键升级
+ocx backup           # 备份数据库 + 配置 + keys
+ocx restore <file>   # 从备份恢复
+ocx tg-clean         # 清除 Telegram 绑定（无 mysql 客户端时自动 docker exec ocx-worker-mysql）
+ocx version          # 查看版本
+ocx uninstall        # 卸载（每步都问，给后悔药）
 ```
 
-> WebSSH 是 OCX-worker 的内置组件，与主服务一起自动启停，**不需要也不提供单独的开关命令**。
+> WebSSH 是 OCX Worker 的内置组件，与主服务一起自动启停，**不需要也不提供单独的开关命令**。
 
 `config` 修改时会**自动备份原 yml**，新配置启动失败时**自动回滚**到上一版，保证不会因为手抖把面板搞登不进去。
 
@@ -120,9 +120,9 @@ ocx-worker uninstall        # 卸载（每步都问，给后悔药）
 | `/opt/ocx-worker/application.yml`        | 配置文件（权限 600）          |
 | `/opt/ocx-worker/application.yml.bak.*`  | 自动备份历史                  |
 | `/opt/ocx-worker/keys/`                  | OCI PEM 密钥                  |
-| `/opt/ocx-worker/backups/`               | `ocx-worker backup` 输出目录   |
+| `/opt/ocx-worker/backups/`               | `ocx backup` 输出目录   |
 | `/etc/systemd/system/ocx-worker.service` | 主程序 systemd                |
-| `/usr/local/bin/ocx-worker`               | 管理脚本                      |
+| `/usr/local/bin/ocx`               | 管理脚本                      |
 | `/usr/local/bin/java`                    | JDK 21 软链                   |
 
 ## 与已有部署的兼容
@@ -136,7 +136,7 @@ ocx-worker uninstall        # 卸载（每步都问，给后悔药）
 ## 安全提醒
 
 - WebSSH 端口 `8008` 监听 `0.0.0.0`（与原 Docker 版一致）。**云厂商安全组只放行 Web 端口**（默认 8818），不要把 8008 暴露公网
-- OCX-worker 已通过反向代理把 WebSSH 嵌入主面板，访问主端口即可使用 WebSSH 全部功能
+- OCX Worker 已通过反向代理把 WebSSH 嵌入主面板，访问主端口即可使用 WebSSH 全部功能
 - 推荐用 Nginx 反代 + Let's Encrypt HTTPS 保护主端口
 - MySQL 端口务必绑定 `127.0.0.1`
 
@@ -162,7 +162,7 @@ ocx-worker uninstall        # 卸载（每步都问，给后悔药）
 ## 卸载
 
 ```bash
-ocx-worker uninstall
+ocx uninstall
 ```
 
 每一步都会问你（删 `/opt/ocx-worker`？删 MySQL 容器？删数据目录？），不会一刀切。
@@ -170,16 +170,16 @@ ocx-worker uninstall
 ## FAQ
 
 **Q: 装了新版还能切回旧版 JAR 吗？**  
-A: 能。`ocx-worker update` 会从 `latest` Release 拉取；升级失败会自动回滚到上一版 JAR。若要整包重装，可用 `ocx-worker uninstall` 时保留 `/opt/ocx-worker` 数据目录后再跑 `install.sh`。
+A: 能。`ocx update` 会从 `latest` Release 拉取；升级失败会自动回滚到上一版 JAR。若要整包重装，可用 `ocx uninstall` 时保留 `/opt/ocx-worker` 数据目录后再跑 `install.sh`。
 
 **Q: 升级会丢数据吗？**  
 A: 不会。升级模式只换 JAR，**完全不动 application.yml 和数据库**。后端启动时由 `DatabaseGuardService` 自动 ALTER 加新表/新字段，旧数据 100% 保留。
 
 **Q: 后端代码升级了，能直接 install 吗？**  
-A: 可以。新版 JAR 推到 `latest` Release 后，`ocx-worker update` 或重跑 `install.sh` 都会拉最新版本。
+A: 可以。新版 JAR 推到 `latest` Release 后，`ocx update` 或重跑 `install.sh` 都会拉最新版本。
 
 **Q: 改坏了 application.yml 怎么办？**  
-A: `ocx-worker config` 修改时会自动备份并在启动失败时回滚。手动改的话可以从 `/opt/ocx-worker/application.yml.bak.*` 找历史版本。
+A: `ocx config` 修改时会自动备份并在启动失败时回滚。手动改的话可以从 `/opt/ocx-worker/application.yml.bak.*` 找历史版本。
 
 **Q: 为什么不在脚本里设置管理员账号密码？**  
 A: 后端 `AuthController` 判断"是否首次安装"只看数据库 `oci_kv` 表里有没有 `web_account / web_password` 两条记录，**不读** `application.yml` 里的 `web.account / web.password`。yml 里的两个字段只在数据库被清空、用户尚未在浏览器完成 Setup 时作为兜底默认值。所以脚本里设置的账号密码不会生效，反而误导用户，我们干脆去掉这一步。后端这样设计是因为数据库里能存 sha256 哈希，比 yml 明文更安全。
@@ -192,4 +192,4 @@ A: 三种办法：
    DELETE FROM oci_kv WHERE type='sys_config' AND code IN ('web_account','web_password');
    ```
    清完刷新浏览器，会回到 Setup 页，重新设置即可（其他数据不丢）
-3. 万不得已：`ocx-worker uninstall` 选保留数据，重新安装一次（数据保留，密码会回到 Setup 流程）
+3. 万不得已：`ocx uninstall` 选保留数据，重新安装一次（数据保留，密码会回到 Setup 流程）
