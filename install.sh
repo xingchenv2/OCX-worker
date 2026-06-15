@@ -27,7 +27,7 @@ readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly JAR_NAME="ocx-worker.jar"
-readonly JAR_ASSET="ocx-worker-1.0.3.jar"
+readonly JAR_ASSET="ocx-worker-1.0.4.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
 readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -1126,7 +1126,7 @@ install_ocx-worker_cli() {
         info "安装 python3（被 ocx config 子命令使用）..."
         pkg_install python3 || warn "python3 未能自动安装，ocx config 子命令将不可用"
     fi
-    ok "管理脚本已安装：${OCIWORKER_BIN}（敲 \`ocx-worker\` 进菜单）"
+    ok "管理脚本已安装：${OCIWORKER_BIN}（敲 \`ocx\` 进菜单）"
 }
 
 # =============================================================================
