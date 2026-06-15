@@ -1,42 +1,42 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ociworker - Management CLI for OCI Worker
+# ocx-worker - Management CLI for OCX-worker
 # -----------------------------------------------------------------------------
 # Usage:
-#   ociworker                  Interactive menu
-#   ociworker status           Show status of oci-worker
-#   ociworker start            Start services
-#   ociworker stop             Stop services
-#   ociworker restart          Restart oci-worker
-#   ociworker logs             Tail oci-worker logs
-#   ociworker config           Modify port / database (rollback on failure)
-#   ociworker update           Run install.sh in upgrade mode
-#   ociworker backup           Backup db dump + application.yml + keys
-#   ociworker restore <file>   Restore from a backup tarball
-#   ociworker tg-clean         Clear Telegram bot binding (oci_kv); re-bind in web UI
-#   ociworker uninstall        Uninstall everything (asks before each step)
-#   ociworker version          Show installer version + jar info
+#   ocx-worker                  Interactive menu
+#   ocx-worker status           Show status of ocx-worker
+#   ocx-worker start            Start services
+#   ocx-worker stop             Stop services
+#   ocx-worker restart          Restart ocx-worker
+#   ocx-worker logs             Tail ocx-worker logs
+#   ocx-worker config           Modify port / database (rollback on failure)
+#   ocx-worker update           Run install.sh in upgrade mode
+#   ocx-worker backup           Backup db dump + application.yml + keys
+#   ocx-worker restore <file>   Restore from a backup tarball
+#   ocx-worker tg-clean         Clear Telegram bot binding (oci_kv); re-bind in web UI
+#   ocx-worker uninstall        Uninstall everything (asks before each step)
+#   ocx-worker version          Show installer version + jar info
 #
 # This script never modifies the database schema and never edits files outside
-# /opt/oci-worker, /etc/systemd/system/oci-worker*.service.
+# /opt/ocx-worker, /etc/systemd/system/ocx-worker*.service.
 # =============================================================================
 
 set -euo pipefail
 
-readonly INSTALL_DIR="/opt/oci-worker"
+readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
-readonly JAR_NAME="oci-worker.jar"
-readonly SERVICE_NAME="oci-worker"
+readonly JAR_NAME="ocx-worker.jar"
+readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 readonly LEGACY_WEBSSH_SERVICE_NAME="oci-webssh"
 readonly LEGACY_WEBSSH_SERVICE_FILE="/etc/systemd/system/${LEGACY_WEBSSH_SERVICE_NAME}.service"
-readonly REPO="OCIworker/OCIworker"
+readonly REPO="xingchenv2/OCX-worker"
 readonly INSTALLER_RELEASE_TAG="installer-latest"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 # install.sh 默认 Docker MySQL 容器名；tg-clean 在本机无 mysql 客户端时可经此容器连库
-readonly OCI_MYSQL_CONTAINER="${OCI_MYSQL_CONTAINER:-oci-worker-mysql}"
+readonly OCI_MYSQL_CONTAINER="${OCI_MYSQL_CONTAINER:-ocx-worker-mysql}"
 
 # -----------------------------------------------------------------------------
 # Colors / output
@@ -86,12 +86,12 @@ ask_yes_no() {
 }
 
 require_root() {
-    if [ "$(id -u)" -ne 0 ]; then die "请用 root 运行：sudo ociworker $*"; fi
+    if [ "$(id -u)" -ne 0 ]; then die "请用 root 运行：sudo ocx-worker $*"; fi
 }
 
 require_installed() {
     if [ ! -f "${CONFIG_FILE}" ] || [ ! -f "${INSTALL_DIR}/${JAR_NAME}" ]; then
-        die "未检测到 OCI Worker 安装，请先运行 install.sh"
+        die "未检测到 OCX-worker 安装，请先运行 install.sh"
     fi
 }
 
@@ -403,7 +403,7 @@ cmd_config() {
     echo
     echo "[规则] 每次修改会自动重启服务验证新配置。"
     echo "       启动失败会自动回滚到上一份 application.yml，无需手动停服。"
-    echo "       手动备份历史保存在 /opt/oci-worker/application.yml.bak.*"
+    echo "       手动备份历史保存在 /opt/ocx-worker/application.yml.bak.*"
     echo
     echo "[提示] 管理员账号/密码请在 Web 界面里修改（设置 -> 安全）。"
     echo
@@ -434,11 +434,11 @@ _change_database() {
     section "数据库修改 / 迁移"
     cat <<EOF
 [i] 把数据库地址、端口、库名、用户名、密码作为一个整体替换。
-    会一次性写入 application.yml 然后重启 oci-worker 验证。
+    会一次性写入 application.yml 然后重启 ocx-worker 验证。
     启动失败会自动回滚到上一份配置。
 
 [!] 如果是把数据迁移到新库（比如换到面板自带的 MySQL）：
-    请先 ociworker backup，把 dump.sql 导入新库后再来切连接。
+    请先 ocx-worker backup，把 dump.sql 导入新库后再来切连接。
     否则切到空库后，登录页会变成首次设置（账号/租户/任务等数据
     看不到，本质是数据库被换走、新库还没数据）。
 
@@ -565,7 +565,7 @@ cmd_backup() {
     require_installed
     mkdir -p "${BACKUP_DIR}"
     local ts; ts="$(date +%Y%m%d-%H%M%S)"
-    local out="${BACKUP_DIR}/oci-worker-backup-${ts}.tar.gz"
+    local out="${BACKUP_DIR}/ocx-worker-backup-${ts}.tar.gz"
     local stage; stage="$(mktemp -d)"
     trap "rm -rf '${stage}'" RETURN
 
@@ -643,7 +643,7 @@ cmd_restore() {
     require_root restore
     require_installed
     local file="${1:-}"
-    [ -n "${file}" ] || die "用法：ociworker restore <backup-file.tar.gz>"
+    [ -n "${file}" ] || die "用法：ocx-worker restore <backup-file.tar.gz>"
     [ -f "${file}" ] || die "文件不存在：${file}"
 
     warn "恢复将覆盖当前配置/密钥/数据库（不可逆）"
@@ -680,8 +680,8 @@ cmd_restore() {
             ok "数据库已恢复"
         else
             warn "数据库恢复失败，请手动查看 db.sql"
-            cp "${stage}/db.sql" "/tmp/oci-worker-restore-db.sql"
-            warn "已保留至 /tmp/oci-worker-restore-db.sql"
+            cp "${stage}/db.sql" "/tmp/ocx-worker-restore-db.sql"
+            warn "已保留至 /tmp/ocx-worker-restore-db.sql"
         fi
     fi
 
@@ -691,8 +691,8 @@ cmd_restore() {
 
 cmd_uninstall() {
     require_root uninstall
-    section "卸载 OCI Worker"
-    [ "$(ask_yes_no "确认要卸载 OCI Worker 吗？" "N")" = "y" ] || { info "已取消"; return 0; }
+    section "卸载 OCX-worker"
+    [ "$(ask_yes_no "确认要卸载 OCX-worker 吗？" "N")" = "y" ] || { info "已取消"; return 0; }
 
     info "停止服务..."
     systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
@@ -710,19 +710,19 @@ cmd_uninstall() {
         info "保留 ${INSTALL_DIR}"
     fi
 
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "oci-worker-mysql"; then
-        if [ "$(ask_yes_no "删除 Docker MySQL 容器 oci-worker-mysql？" "N")" = "y" ]; then
-            docker rm -f oci-worker-mysql >/dev/null 2>&1 || true
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "ocx-worker-mysql"; then
+        if [ "$(ask_yes_no "删除 Docker MySQL 容器 ocx-worker-mysql？" "N")" = "y" ]; then
+            docker rm -f ocx-worker-mysql >/dev/null 2>&1 || true
             ok "MySQL 容器已删除"
-            if [ "$(ask_yes_no "也删除 MySQL 数据目录 /opt/oci-worker/data/mysql？" "N")" = "y" ]; then
-                rm -rf /opt/oci-worker/data/mysql
+            if [ "$(ask_yes_no "也删除 MySQL 数据目录 /opt/ocx-worker/data/mysql？" "N")" = "y" ]; then
+                rm -rf /opt/ocx-worker/data/mysql
                 ok "数据目录已删除"
             fi
         fi
     fi
 
-    if [ "$(ask_yes_no "删除管理脚本 ociworker？" "N")" = "y" ]; then
-        rm -f /usr/local/bin/ociworker
+    if [ "$(ask_yes_no "删除管理脚本 ocx-worker？" "N")" = "y" ]; then
+        rm -f /usr/local/bin/ocx-worker
         ok "已删除"
     fi
 
@@ -742,7 +742,7 @@ menu() {
     # In interactive menu mode, individual command failures must not exit
     # the whole script. Use `|| true` on every command invocation.
     while true; do
-        section "OCI Worker 管理"
+        section "OCX-worker 管理"
         cat <<EOF
   1) 查看状态        2) 启动        3) 停止        4) 重启
   5) 查看实时日志    6) 修改配置（含回滚）

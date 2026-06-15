@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# OCI Worker - Smart Installer (v2)
+# OCX-worker - Smart Installer (v2)
 # -----------------------------------------------------------------------------
 # Friendly interactive installer with the following features:
 #   * First-install wizard: JDK / DB / port / systemd / firewall
@@ -11,11 +11,11 @@
 #   * Atomic config writes with .bak rollback if the new config breaks startup.
 #
 # This script is INDEPENDENT of the original deploy.sh / update.sh.
-# It does NOT modify anything outside /opt/oci-worker, /etc/systemd/system,
-# /usr/local/bin/ociworker.
+# It does NOT modify anything outside /opt/ocx-worker, /etc/systemd/system,
+# /usr/local/bin/ocx-worker.
 #
 # Run as root:
-#   bash <(curl -fsSL https://github.com/OCIworker/OCIworker/releases/download/installer-latest/install.sh)
+#   bash <(curl -fsSL https://github.com/xingchenv2/OCX-worker/releases/download/installer-latest/install.sh)
 # =============================================================================
 
 set -euo pipefail
@@ -23,24 +23,24 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # Constants (DO NOT change unless backend code changes accordingly)
 # -----------------------------------------------------------------------------
-readonly INSTALL_DIR="/opt/oci-worker"
+readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
-readonly JAR_NAME="oci-worker.jar"
-readonly JAR_ASSET="oci-worker-1.0.0.jar"
+readonly JAR_NAME="ocx-worker.jar"
+readonly JAR_ASSET="ocx-worker-1.0.0.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
-readonly SERVICE_NAME="oci-worker"
+readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 readonly LEGACY_WEBSSH_BIN="${INSTALL_DIR}/oci-webssh"
 readonly LEGACY_WEBSSH_SERVICE="oci-webssh"
 
-readonly REPO="OCIworker/OCIworker"
+readonly REPO="xingchenv2/OCX-worker"
 readonly JAR_RELEASE_TAG="latest"
 readonly INSTALLER_RELEASE_TAG="installer-latest"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 
-readonly OCIWORKER_BIN="/usr/local/bin/ociworker"
-readonly TMP_DIR="$(mktemp -d -t oci-worker-installer.XXXXXX)"
+readonly OCIWORKER_BIN="/usr/local/bin/ocx-worker"
+readonly TMP_DIR="$(mktemp -d -t ocx-worker-installer.XXXXXX)"
 
 # JDK 21 (Adoptium Temurin)
 readonly JDK_VERSION="21.0.7+6"
@@ -262,17 +262,17 @@ install_jdk21() {
 DB_HOST=""; DB_PORT=""; DB_NAME=""; DB_USER=""; DB_PASS=""
 
 docker_mysql_container_up() {
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "oci-worker-mysql"
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "ocx-worker-mysql"
 }
 
-# Run mysql inside oci-worker-mysql (avoids host MariaDB client vs MySQL 8 quirks on Debian 13+).
+# Run mysql inside ocx-worker-mysql (avoids host MariaDB client vs MySQL 8 quirks on Debian 13+).
 mysql_docker_run() {
     local user="$1" pass="$2" db="$3" sql="$4"
     local args=(-u"${user}" -N -B --connect-timeout=5)
     [ -n "${db}" ] && args+=("${db}")
     local out errf err=""
     errf="$(mktemp)"
-    out="$(docker exec -e MYSQL_PWD="${pass}" oci-worker-mysql \
+    out="$(docker exec -e MYSQL_PWD="${pass}" ocx-worker-mysql \
         mysql "${args[@]}" -e "${sql}" 2>"${errf}" || true)"
     if [ -s "${errf}" ]; then
         err="$(tr '\n' ' ' < "${errf}" | sed 's/  */ /g')"
@@ -295,7 +295,7 @@ mysql_output_is_one() {
 }
 
 docker_mysql_logs_final_ready() {
-    docker logs oci-worker-mysql 2>&1 | grep -qE 'ready for connections.*port: 3306'
+    docker logs ocx-worker-mysql 2>&1 | grep -qE 'ready for connections.*port: 3306'
 }
 
 # Host mysql: keep stderr separate so MariaDB client WARNING lines do not break parsing.
@@ -397,7 +397,7 @@ wait_docker_mysql_user() {
                 ;;
             auth_fail)
                 printf "\n" >&2
-                die "MySQL 已启动，但用户名或密码错误。复用容器时请填写首次创建时的密码；不记得请选重新创建容器（或清空 /opt/oci-worker/data/mysql 后重装）。"
+                die "MySQL 已启动，但用户名或密码错误。复用容器时请填写首次创建时的密码；不记得请选重新创建容器（或清空 /opt/ocx-worker/data/mysql 后重装）。"
                 ;;
             *)
                 consecutive=0
@@ -423,7 +423,7 @@ verify_docker_mysql_credentials() {
             die "无法用当前用户名/密码连接容器内 MySQL（密码须与容器初始化时一致，或选择重新创建容器）"
             ;;
         conn_fail)
-            die "无法连接 127.0.0.1:3306，请检查容器：docker logs oci-worker-mysql"
+            die "无法连接 127.0.0.1:3306，请检查容器：docker logs ocx-worker-mysql"
             ;;
         *)
             die "MySQL 返回错误：${probe#other:}"
@@ -568,7 +568,7 @@ prompt_db_existing() {
     cat >&2 <<EOF
 请确保已在面板里准备好：
   1. 数据库（默认建议名：oci_worker）
-  2. 用户（默认建议名：ociworker）
+  2. 用户（默认建议名：ocxworker）
   3. 字符集 utf8mb4 / utf8mb4_unicode_ci
   4. 用户对该库有所有权限
   5. MySQL 监听端口已暴露到宿主机（127.0.0.1:3306 通常即可）
@@ -578,7 +578,7 @@ EOF
         DB_HOST="$(ask "数据库地址" "127.0.0.1")"
         DB_PORT="$(ask "数据库端口" "3306")"
         DB_NAME="$(ask "数据库名"   "oci_worker")"
-        DB_USER="$(ask "用户名"     "ociworker")"
+        DB_USER="$(ask "用户名"     "ocxworker")"
         DB_PASS="$(ask_password "密码")"
 
         if [ -z "${DB_PASS}" ]; then
@@ -656,7 +656,7 @@ prompt_db_docker() {
     DB_HOST="127.0.0.1"
     DB_PORT="3306"
     DB_NAME="$(ask "数据库名"   "oci_worker")"
-    DB_USER="$(ask "用户名"     "ociworker")"
+    DB_USER="$(ask "用户名"     "ocxworker")"
     DB_PASS="$(ask_password "新建用户密码（至少 8 位，建议含字母数字）")"
     while [ "${#DB_PASS}" -lt 6 ]; do
         warn "密码太短"
@@ -666,32 +666,32 @@ prompt_db_docker() {
     root_pass="$(ask_password "root 密码（用于初始化，可与上方相同）")"
     [ -n "${root_pass}" ] || root_pass="${DB_PASS}"
 
-    if docker ps -a --format '{{.Names}}' | grep -qx "oci-worker-mysql"; then
-        warn "已存在容器 oci-worker-mysql"
-        if [ "$(ask_yes_no "重新创建？（会保留 /opt/oci-worker/data/mysql 数据目录）" "N")" = "y" ]; then
-            docker rm -f oci-worker-mysql >/dev/null
+    if docker ps -a --format '{{.Names}}' | grep -qx "ocx-worker-mysql"; then
+        warn "已存在容器 ocx-worker-mysql"
+        if [ "$(ask_yes_no "重新创建？（会保留 /opt/ocx-worker/data/mysql 数据目录）" "N")" = "y" ]; then
+            docker rm -f ocx-worker-mysql >/dev/null
         else
             info "复用已有容器"
         fi
     fi
 
-    if docker ps -a --format '{{.Names}}' | grep -qx "oci-worker-mysql"; then
-        if ! docker ps --format '{{.Names}}' | grep -qx "oci-worker-mysql"; then
-            info "启动已有容器 oci-worker-mysql..."
-            docker start oci-worker-mysql >/dev/null || die "启动容器失败：docker start oci-worker-mysql"
-            wait_docker_mysql_user || die "MySQL 启动超时，请查看：docker logs oci-worker-mysql"
+    if docker ps -a --format '{{.Names}}' | grep -qx "ocx-worker-mysql"; then
+        if ! docker ps --format '{{.Names}}' | grep -qx "ocx-worker-mysql"; then
+            info "启动已有容器 ocx-worker-mysql..."
+            docker start ocx-worker-mysql >/dev/null || die "启动容器失败：docker start ocx-worker-mysql"
+            wait_docker_mysql_user || die "MySQL 启动超时，请查看：docker logs ocx-worker-mysql"
         fi
         verify_docker_mysql_credentials
         return 0
     fi
 
     info "启动 MySQL 8.0 容器..."
-    mkdir -p /opt/oci-worker/data/mysql
+    mkdir -p /opt/ocx-worker/data/mysql
     docker run -d \
-        --name oci-worker-mysql \
+        --name ocx-worker-mysql \
         --restart always \
         -p 127.0.0.1:3306:3306 \
-        -v /opt/oci-worker/data/mysql:/var/lib/mysql \
+        -v /opt/ocx-worker/data/mysql:/var/lib/mysql \
         -e MYSQL_ROOT_PASSWORD="${root_pass}" \
         -e MYSQL_DATABASE="${DB_NAME}" \
         -e MYSQL_USER="${DB_USER}" \
@@ -701,7 +701,7 @@ prompt_db_docker() {
         --character-set-server=utf8mb4 \
         --collation-server=utf8mb4_unicode_ci >/dev/null \
         || die "MySQL 容器启动失败"
-    wait_docker_mysql_user || die "MySQL 启动超时，请查看：docker logs oci-worker-mysql"
+    wait_docker_mysql_user || die "MySQL 启动超时，请查看：docker logs ocx-worker-mysql"
     verify_docker_mysql_credentials
 }
 
@@ -715,7 +715,7 @@ prompt_db_root() {
     root_pass="$(ask_password "root 密码")"
 
     DB_NAME="$(ask "新建数据库名" "oci_worker")"
-    DB_USER="$(ask "新建用户名"   "ociworker")"
+    DB_USER="$(ask "新建用户名"   "ocxworker")"
     DB_PASS="$(ask_password "新建用户密码")"
     while [ "${#DB_PASS}" -lt 6 ]; do
         warn "密码太短"
@@ -797,7 +797,7 @@ WEB_DEFAULT_PASSWORD=""
 prompt_web() {
     section "Web 服务配置"
     while true; do
-        WEB_PORT="$(ask "OCI Worker Web 端口" "8818")"
+        WEB_PORT="$(ask "OCX-worker Web 端口" "8818")"
         if [[ "${WEB_PORT}" =~ ^[0-9]+$ ]] && [ "${WEB_PORT}" -ge 1 ] && [ "${WEB_PORT}" -le 65535 ]; then
             if [ "${WEB_PORT}" -eq 8008 ]; then
                 warn "端口 8008 不可用，请换一个"
@@ -891,7 +891,7 @@ write_systemd_unit() {
     info "写入 systemd 服务：${SERVICE_NAME}..."
     cat > "${SERVICE_FILE}" <<EOF
 [Unit]
-Description=OCI Worker
+Description=OCX-worker
 After=network.target docker.service
 
 [Service]
@@ -1033,7 +1033,7 @@ cleanup_legacy_webssh() {
     systemctl daemon-reload 2>/dev/null || true
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "webssh"; then
         docker stop webssh >/dev/null 2>&1 || true
-        (cd /opt/oci-worker/webssh 2>/dev/null && docker compose down >/dev/null 2>&1) || true
+        (cd /opt/ocx-worker/webssh 2>/dev/null && docker compose down >/dev/null 2>&1) || true
     fi
 }
 
@@ -1045,9 +1045,9 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# ociworker management script installation
+# ocx-worker management script installation
 # -----------------------------------------------------------------------------
-install_ociworker_cli() {
+install_ocx-worker_cli() {
     # Source priority:
     #   1. Same dir as install.sh (development / cloned repo)
     #   2. master branch raw (always up-to-date)
@@ -1055,35 +1055,35 @@ install_ociworker_cli() {
     local src=""
     local self_dir
     self_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
-    if [ -f "${self_dir}/ociworker" ]; then
-        src="${self_dir}/ociworker"
+    if [ -f "${self_dir}/ocx-worker" ]; then
+        src="${self_dir}/ocx-worker"
     fi
     if [ -z "${src}" ]; then
-        info "下载管理脚本 ociworker（优先 master 分支）..."
-        local tmp="${TMP_DIR}/ociworker"
-        if download_with_retry "${RAW_BASE}/ociworker" "${tmp}"; then
+        info "下载管理脚本 ocx-worker（优先 master 分支）..."
+        local tmp="${TMP_DIR}/ocx-worker"
+        if download_with_retry "${RAW_BASE}/ocx-worker" "${tmp}"; then
             src="${tmp}"
-        elif download_with_retry "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/ociworker" "${tmp}"; then
+        elif download_with_retry "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/ocx-worker" "${tmp}"; then
             src="${tmp}"
         else
-            warn "无法下载 ociworker（不影响主程序运行），可稍后手动安装"
+            warn "无法下载 ocx-worker（不影响主程序运行），可稍后手动安装"
             return 0
         fi
     fi
     install -m 0755 "${src}" "${OCIWORKER_BIN}"
-    # python3 is required by `ociworker config` for safe YAML editing.
+    # python3 is required by `ocx-worker config` for safe YAML editing.
     if ! command -v python3 >/dev/null 2>&1; then
-        info "安装 python3（被 ociworker config 子命令使用）..."
-        pkg_install python3 || warn "python3 未能自动安装，ociworker config 子命令将不可用"
+        info "安装 python3（被 ocx-worker config 子命令使用）..."
+        pkg_install python3 || warn "python3 未能自动安装，ocx-worker config 子命令将不可用"
     fi
-    ok "管理脚本已安装：${OCIWORKER_BIN}（敲 \`ociworker\` 进菜单）"
+    ok "管理脚本已安装：${OCIWORKER_BIN}（敲 \`ocx-worker\` 进菜单）"
 }
 
 # =============================================================================
 # Main entry points
 # =============================================================================
 do_install() {
-    section "OCI Worker 智能安装向导"
+    section "OCX-worker 智能安装向导"
     info "系统架构：$(uname -m) (映射为 ${ARCH})"
     install_jdk21
 
@@ -1099,10 +1099,10 @@ do_install() {
     cleanup_legacy_webssh
 
     firewall_open_port "${WEB_PORT}"
-    install_ociworker_cli
+    install_ocx-worker_cli
 
     if ! restart_with_rollback; then
-        die "OCI Worker 启动失败，已尝试回滚。请查看日志后再决定是否重试。"
+        die "OCX-worker 启动失败，已尝试回滚。请查看日志后再决定是否重试。"
     fi
 
     security_notice
@@ -1121,18 +1121,18 @@ do_install() {
 防火墙提醒：
   * 已自动放行本机 ufw / firewalld 的 ${WEB_PORT}/tcp
   * 云厂商安全组里也要放行 ${WEB_PORT}/tcp（OCI/AWS/腾讯云等）
-常用管理命令（敲 ociworker 进交互菜单）：
-  ociworker status     查看状态
-  ociworker logs       查看实时日志
-  ociworker config     修改端口/数据库（含回滚；账号密码请在网页修改）
-  ociworker update     更新到最新版本
-  ociworker backup     备份数据库 + 配置 + 密钥
-  ociworker tg-clean   清除 Telegram 绑定（无本机 mysql 时自动经 Docker MySQL 容器）
+常用管理命令（敲 ocx-worker 进交互菜单）：
+  ocx-worker status     查看状态
+  ocx-worker logs       查看实时日志
+  ocx-worker config     修改端口/数据库（含回滚；账号密码请在网页修改）
+  ocx-worker update     更新到最新版本
+  ocx-worker backup     备份数据库 + 配置 + 密钥
+  ocx-worker tg-clean   清除 Telegram 绑定（无本机 mysql 时自动经 Docker MySQL 容器）
 EOF
 }
 
 do_upgrade() {
-    section "OCI Worker 升级模式"
+    section "OCX-worker 升级模式"
     info "检测到已有安装：${INSTALL_DIR}"
     info "升级模式不会修改 application.yml 和数据库"
 
@@ -1157,7 +1157,7 @@ do_upgrade() {
 
     cleanup_legacy_webssh
 
-    install_ociworker_cli
+    install_ocx-worker_cli
 
     if restart_with_rollback; then
         # On success, drop the JAR backup
@@ -1172,7 +1172,7 @@ do_upgrade() {
         cat >&2 <<EOF
 访问地址:    http://${pub_ip}:${cur_port}
 查看日志:    journalctl -u ${SERVICE_NAME} -f
-管理命令:    ociworker
+管理命令:    ocx-worker
 EOF
     else
         warn "新版本启动失败，回滚到旧 JAR..."
