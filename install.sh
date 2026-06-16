@@ -39,7 +39,7 @@ readonly JAR_RELEASE_TAG="latest"
 readonly INSTALLER_RELEASE_TAG="installer-latest"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 
-readonly OCIWORKER_BIN="/usr/local/bin/ocx"
+readonly OCXWORKER_BIN="/usr/local/bin/ocx"
 readonly TMP_DIR="$(mktemp -d -t ocx-worker-installer.XXXXXX)"
 
 # JDK 21 (Adoptium Temurin)
@@ -1121,14 +1121,14 @@ install_ocx_cli() {
             return 0
         fi
     fi
-    install -m 0755 "${src}" "${OCIWORKER_BIN}"
-    ln -sf "${OCIWORKER_BIN}" /usr/local/bin/ocx-worker
+    install -m 0755 "${src}" "${OCXWORKER_BIN}"
+    ln -sf "${OCXWORKER_BIN}" /usr/local/bin/ocx-worker
     # python3 is required by `ocx config` for safe YAML editing.
     if ! command -v python3 >/dev/null 2>&1; then
         info "安装 python3（被 ocx config 子命令使用）..."
         pkg_install python3 || warn "python3 未能自动安装，ocx config 子命令将不可用"
     fi
-    ok "管理脚本已安装：${OCIWORKER_BIN}（敲 \`ocx\` 进菜单）"
+    ok "管理脚本已安装：${OCXWORKER_BIN}（敲 \`ocx\` 进菜单）"
 }
 
 # =============================================================================
