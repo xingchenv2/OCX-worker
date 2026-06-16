@@ -5,9 +5,9 @@
 # Usage:
 #   ocx                         Interactive menu
 #   ocx status           Show status of ocx-worker
-#   ocx-worker start            Start services
-#   ocx-worker stop             Stop services
-#   ocx-worker restart          Restart ocx-worker
+#   ocx start            Start services
+#   ocx stop             Stop services
+#   ocx restart          Restart ocx-worker
 #   ocx logs             Tail ocx logs
 #   ocx config           Modify port / database (rollback on failure)
 #   ocx update           Run install.sh in upgrade mode
@@ -545,19 +545,23 @@ cmd_update() {
     require_root update
     require_installed
     section "运行升级"
-    info "下载并执行 install.sh（优先 master 分支，升级模式自动识别）..."
-    local tmp; tmp="$(mktemp)"
-    if curl -fsSL --connect-timeout 15 "${RAW_BASE}/install.sh" -o "${tmp}"; then
-        :
-    elif curl -fsSL --connect-timeout 15 \
-            "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/install.sh" \
-            -o "${tmp}"; then
-        :
-    else
-        rm -f "${tmp}"; die "install.sh 下载失败（master raw 与 release 都不可达）"
+    info "查询 GitHub 最新版本 Release..."
+    local tag tmp api
+    tmp="$(mktemp)"
+    api="https://api.github.com/repos/${REPO}/releases/latest"
+    tag="$(curl -fsSL --connect-timeout 15 "${api}" 2>/dev/null         | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null || true)"
+    if [ -z "${tag}" ]; then
+        warn "无法查询 latest API，回退到 installer-latest"
+        tag="${INSTALLER_RELEASE_TAG}"
     fi
-    bash "${tmp}"
+    info "下载 install.sh（Release：${tag}）..."
+    if curl -fsSL --connect-timeout 20 "https://github.com/${REPO}/releases/download/${tag}/install.sh" -o "${tmp}"; then
+        bash "${tmp}"
+        rm -f "${tmp}"
+        return 0
+    fi
     rm -f "${tmp}"
+    die "install.sh 下载失败：Release ${tag}"
 }
 
 cmd_backup() {

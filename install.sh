@@ -27,7 +27,7 @@ readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly JAR_NAME="ocx-worker.jar"
-readonly JAR_ASSET="ocx-worker-1.0.4.jar"
+readonly JAR_ASSET="ocx-worker-1.1.0.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
 readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -1097,7 +1097,7 @@ EOF
 # -----------------------------------------------------------------------------
 # ocx-worker management script installation
 # -----------------------------------------------------------------------------
-install_ocx-worker_cli() {
+install_ocx_cli() {
     # Source priority:
     #   1. Same dir as install.sh (development / cloned repo)
     #   2. master branch raw (always up-to-date)
@@ -1113,7 +1113,9 @@ install_ocx-worker_cli() {
         local tmp="${TMP_DIR}/ocx"
         if download_with_retry "${RAW_BASE}/ocx" "${tmp}"; then
             src="${tmp}"
-        elif download_with_retry "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/ocx-worker" "${tmp}"; then
+        elif download_with_retry "https://github.com/${REPO}/releases/download/${JAR_RELEASE_TAG}/ocx" "${tmp}"; then
+            :
+        elif download_with_retry "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/ocx" "${tmp}"; then
             src="${tmp}"
         else
             warn "无法下载 ocx（不影响主程序运行），可稍后手动安装"
@@ -1121,6 +1123,7 @@ install_ocx-worker_cli() {
         fi
     fi
     install -m 0755 "${src}" "${OCIWORKER_BIN}"
+    ln -sf "${OCIWORKER_BIN}" /usr/local/bin/ocx-worker
     # python3 is required by `ocx config` for safe YAML editing.
     if ! command -v python3 >/dev/null 2>&1; then
         info "安装 python3（被 ocx config 子命令使用）..."
@@ -1149,7 +1152,7 @@ do_install() {
     cleanup_legacy_webssh
 
     firewall_open_port "${WEB_PORT}"
-    install_ocx-worker_cli
+    install_ocx_cli
 
     if ! restart_with_rollback; then
         die "OCX Worker 启动失败，已尝试回滚。请查看日志后再决定是否重试。"
@@ -1207,7 +1210,7 @@ do_upgrade() {
 
     cleanup_legacy_webssh
 
-    install_ocx-worker_cli
+    install_ocx_cli
 
     if restart_with_rollback; then
         # On success, drop the JAR backup
