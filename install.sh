@@ -567,7 +567,7 @@ check_database_quality() {
 
     # Privilege probe: try to create+drop a temp table
     out="$(mysql_cli_run "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_PASS}" "${DB_NAME}" \
-        "CREATE TABLE IF NOT EXISTS _ociworker_probe_(id INT) ENGINE=InnoDB; DROP TABLE _ociworker_probe_;")"
+        "CREATE TABLE IF NOT EXISTS _ocxworker_probe_(id INT) ENGINE=InnoDB; DROP TABLE _ocxworker_probe_;")"
     if [ -n "${out}" ]; then
         err "DDL 权限测试失败：${out}"
         warn "请确认用户 ${DB_USER} 对库 ${DB_NAME} 拥有所有权限"
