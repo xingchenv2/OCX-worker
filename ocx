@@ -24,6 +24,7 @@
 set -euo pipefail
 
 readonly INSTALL_DIR="/opt/ocx-worker"
+readonly OCX_VERSION="v1.1.6"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
@@ -549,11 +550,19 @@ cmd_update() {
     local tag tmp api
     tmp="$(mktemp)"
     api="https://api.github.com/repos/${REPO}/releases/latest"
-    tag="$(curl -fsSL --connect-timeout 15 "${api}" 2>/dev/null         | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null || true)"
+    tag="$(curl -fsSL --connect-timeout 15 "${api}" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null || true)"
     if [ -z "${tag}" ]; then
         warn "无法查询 latest API，回退到 installer-latest"
         tag="${INSTALLER_RELEASE_TAG}"
     fi
+
+    if [ "${tag}" = "${OCX_VERSION}" ]; then
+        ok "当前已是最新版本 (${OCX_VERSION})，无需升级。"
+        rm -f "${tmp}"
+        return 0
+    fi
+
     info "下载 install.sh（Release：${tag}）..."
     if curl -fsSL --connect-timeout 20 "https://github.com/${REPO}/releases/download/${tag}/install.sh" -o "${tmp}"; then
         bash "${tmp}"
@@ -735,8 +744,16 @@ cmd_uninstall() {
 
 cmd_version() {
     section "版本信息"
+    info "当前版本：${OCX_VERSION}"
     [ -f "${INSTALL_DIR}/${JAR_NAME}" ] && ls -lh "${INSTALL_DIR}/${JAR_NAME}" || echo "JAR 未安装"
     if command -v java >/dev/null 2>&1; then java -version 2>&1 | head -n 1; fi
+
+    local latest_tag
+    latest_tag="$(curl -fsSL --connect-timeout 10 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null || true)"
+    if [ -n "${latest_tag}" ] && [ "${latest_tag}" != "${OCX_VERSION}" ]; then
+        warn "检测到新版本可用: ${latest_tag}，你可以敲 9 升级到最新版！"
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -748,11 +765,18 @@ menu() {
     while true; do
         section "OCX Worker 管理"
         cat <<EOF
-  1) 查看状态        2) 启动        3) 停止        4) 重启
-  5) 查看实时日志    6) 修改配置（含回滚）
-  7) 备份            8) 恢复
-  9) 升级到最新版   10) 版本信息
- 11) 清除Tg绑定    12) 卸载
+  1) 查看状态
+  2) 启动
+  3) 停止
+  4) 重启
+  5) 查看实时日志
+  6) 修改配置（含回滚）
+  7) 备份
+  8) 恢复
+  9) 升级到最新版
+ 10) 版本信息
+ 11) 清除Tg绑定
+ 12) 卸载
   0) 退出
 EOF
         printf "> " >&2
