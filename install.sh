@@ -27,7 +27,7 @@ readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly JAR_NAME="ocx-worker.jar"
-readonly JAR_ASSET="ocx-worker-1.1.3.jar"
+readonly JAR_ASSET="ocx-worker-1.1.4.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
 readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -76,15 +76,14 @@ section() { printf "\n%s%s== %s ==%s\n" "${C_BOLD}" "${C_CYAN}" "$*" "${C_RESET}
 # Read a value with default. Use stderr for the prompt so command substitution works.
 _read_answer() {
     local __var="$1" __silent="${2:-0}" __reply=""
-    if [ -t 0 ] && [ -r /dev/tty ]; then
+    if [ -r /dev/tty ]; then
         if [ "${__silent}" = "1" ]; then
             IFS= read -r -s __reply </dev/tty || __reply=""
         else
             IFS= read -r __reply </dev/tty || __reply=""
         fi
     else
-        # Non-interactive mode: allow piping answers into the installer.
-        # `read -s` is only useful on a TTY; stdin fallback must be plain read.
+        # Non-interactive fallback (e.g. automated containers/scripts with no TTY)
         IFS= read -r __reply || __reply=""
     fi
     printf -v "${__var}" '%s' "${__reply}"
