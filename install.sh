@@ -27,7 +27,7 @@ readonly INSTALL_DIR="/opt/ocx-worker"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly JAR_NAME="ocx-worker.jar"
-readonly JAR_ASSET="ocx-worker-1.1.2.jar"
+readonly JAR_ASSET="ocx-worker-1.1.3.jar"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
 readonly SERVICE_NAME="ocx-worker"
 readonly SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -1100,8 +1100,8 @@ EOF
 install_ocx_cli() {
     # Source priority:
     #   1. Same dir as install.sh (development / cloned repo)
-    #   2. master branch raw (always up-to-date)
-    #   3. installer-latest release (fallback when raw is unreachable)
+    #   2. The exact release tag of this installer (JAR_RELEASE_TAG)
+    #   3. installer-latest release (fallback)
     local src=""
     local self_dir
     self_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
@@ -1109,13 +1109,13 @@ install_ocx_cli() {
         src="${self_dir}/ocx"
     fi
     if [ -z "${src}" ]; then
-        info "下载管理脚本 ocx（优先 master 分支）..."
+        info "下载管理脚本 ocx..."
         local tmp="${TMP_DIR}/ocx"
-        if download_with_retry "${RAW_BASE}/ocx" "${tmp}"; then
+        if download_with_retry "https://github.com/${REPO}/releases/download/${JAR_RELEASE_TAG}/ocx" "${tmp}"; then
             src="${tmp}"
-        elif download_with_retry "https://github.com/${REPO}/releases/download/${JAR_RELEASE_TAG}/ocx" "${tmp}"; then
-            :
         elif download_with_retry "https://github.com/${REPO}/releases/download/${INSTALLER_RELEASE_TAG}/ocx" "${tmp}"; then
+            src="${tmp}"
+        elif download_with_retry "${RAW_BASE}/ocx" "${tmp}"; then
             src="${tmp}"
         else
             warn "无法下载 ocx（不影响主程序运行），可稍后手动安装"
