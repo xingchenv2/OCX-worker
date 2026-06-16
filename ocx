@@ -24,7 +24,7 @@
 set -euo pipefail
 
 readonly INSTALL_DIR="/opt/ocx-worker"
-readonly OCX_VERSION="v1.1.6"
+readonly OCX_VERSION="v1.1.7"
 readonly KEYS_DIR="${INSTALL_DIR}/keys"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly CONFIG_FILE="${INSTALL_DIR}/application.yml"
